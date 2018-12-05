@@ -4,6 +4,7 @@ namespace Laravel\Telescope\Watchers;
 
 use Laravel\Telescope\Telescope;
 use Laravel\Telescope\ExtractTags;
+use Laravel\Telescope\FormatModel;
 use Laravel\Telescope\IncomingEntry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,6 +32,10 @@ class NotificationWatcher extends Watcher
      */
     public function recordNotification(NotificationSent $event)
     {
+        if (! Telescope::isRecording()) {
+            return;
+        }
+
         Telescope::recordNotification(IncomingEntry::make([
             'notification' => get_class($event->notification),
             'queued' => in_array(ShouldQueue::class, class_implements($event->notification)),
@@ -62,7 +67,7 @@ class NotificationWatcher extends Watcher
     private function formatNotifiable($notifiable)
     {
         if ($notifiable instanceof Model) {
-            return get_class($notifiable) . ':' . $notifiable->getKey();
+            return FormatModel::given($notifiable);
         } elseif ($notifiable instanceof AnonymousNotifiable) {
             return 'Anonymous:'.implode(',', $notifiable->routes);
         }

@@ -23,6 +23,20 @@
         </tr>
 
         <tr>
+            <td class="table-fit font-weight-bold">Controller Action</td>
+            <td>
+                {{slotProps.entry.content.controller_action}}
+            </td>
+        </tr>
+
+        <tr v-if="slotProps.entry.content.middleware">
+            <td class="table-fit font-weight-bold">Middleware</td>
+            <td>
+                {{slotProps.entry.content.middleware.join(", ")}}
+            </td>
+        </tr>
+        
+        <tr>
             <td class="table-fit font-weight-bold">Path</td>
             <td>
                 {{slotProps.entry.content.uri}}
@@ -33,6 +47,13 @@
             <td class="table-fit font-weight-bold">Status</td>
             <td>
                 {{slotProps.entry.content.response_status}}
+            </td>
+        </tr>
+
+        <tr>
+            <td class="table-fit font-weight-bold">Duration</td>
+            <td>
+                {{slotProps.entry.content.duration || '-'}} ms
             </td>
         </tr>
         </template>
@@ -54,10 +75,10 @@
                     </li>
                 </ul>
                 <div class="code-bg p-4 mb-0 text-white">
-                    <tree-view :data="slotProps.entry.content.payload" :options="{maxDepth: 3}" v-if="currentTab=='payload'"></tree-view>
-                    <tree-view :data="slotProps.entry.content.headers" :options="{maxDepth: 3}" v-if="currentTab=='headers'"></tree-view>
-                    <tree-view :data="slotProps.entry.content.session" :options="{maxDepth: 3}" v-if="currentTab=='session'"></tree-view>
-                    <tree-view :data="slotProps.entry.content.response" :options="{maxDepth: 3}" v-if="currentTab=='response'"></tree-view>
+                    <vue-json-pretty :data="slotProps.entry.content.payload" v-if="currentTab=='payload'"></vue-json-pretty>
+                    <vue-json-pretty :data="slotProps.entry.content.headers" v-if="currentTab=='headers'"></vue-json-pretty>
+                    <vue-json-pretty :data="slotProps.entry.content.session" v-if="currentTab=='session'"></vue-json-pretty>
+                    <vue-json-pretty :data="slotProps.entry.content.response" v-if="currentTab=='response'"></vue-json-pretty>
                 </div>
             </div>
 

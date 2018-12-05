@@ -5,6 +5,8 @@ namespace Laravel\Telescope;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Telescope\Contracts\EntriesRepository;
+use Laravel\Telescope\Contracts\PrunableRepository;
+use Laravel\Telescope\Contracts\ClearableRepository;
 use Laravel\Telescope\Storage\DatabaseEntriesRepository;
 
 class TelescopeServiceProvider extends ServiceProvider
@@ -63,7 +65,7 @@ class TelescopeServiceProvider extends ServiceProvider
      */
     private function registerMigrations()
     {
-        if ($this->app->runningInConsole()) {
+        if ($this->app->runningInConsole() && $this->shouldMigrate()) {
             $this->loadMigrationsFrom(__DIR__.'/Storage/migrations');
         }
     }
@@ -104,8 +106,10 @@ class TelescopeServiceProvider extends ServiceProvider
         $this->registerStorageDriver();
 
         $this->commands([
+            Console\ClearCommand::class,
             Console\InstallCommand::class,
             Console\PruneCommand::class,
+            Console\PublishCommand::class,
         ]);
     }
 
@@ -134,8 +138,26 @@ class TelescopeServiceProvider extends ServiceProvider
             EntriesRepository::class, DatabaseEntriesRepository::class
         );
 
+        $this->app->singleton(
+            ClearableRepository::class, DatabaseEntriesRepository::class
+        );
+
+        $this->app->singleton(
+            PrunableRepository::class, DatabaseEntriesRepository::class
+        );
+
         $this->app->when(DatabaseEntriesRepository::class)
             ->needs('$connection')
             ->give(config('telescope.storage.database.connection'));
+    }
+
+    /**
+     * Determine if we should register the migrations.
+     *
+     * @return bool
+     */
+    protected function shouldMigrate()
+    {
+        return config('telescope.driver') === 'database';
     }
 }

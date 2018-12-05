@@ -33,7 +33,7 @@ svg.icon {
 
 .sidebar .nav-item {
   a {
-    color: $sidebar-nav-color;;
+    color: $sidebar-nav-color;
     padding: 0.5rem 0rem;
 
     svg {
@@ -256,4 +256,10 @@ button:hover{
 
 .code-bg{
   background: $code-bg;
+}
+
+.disabled-watcher {
+  padding: 0.75rem;
+  color: #fff;
+  background: $danger;
 }

@@ -14,6 +14,7 @@
             <th scope="col">Verb</th>
             <th scope="col">Path</th>
             <th scope="col">Status</th>
+            <th scope="col">Duration</th>
             <th scope="col">Happened</th>
             <th scope="col"></th>
         </tr>
@@ -26,12 +27,17 @@
                 </span>
             </td>
 
-            <td :title="slotProps.entry.content.uri">{{truncate(slotProps.entry.content.uri, 90)}}</td>
+            <td :title="slotProps.entry.content.uri">{{truncate(slotProps.entry.content.uri, 70)}}</td>
 
             <td class="table-fit">
                 <span class="badge font-weight-light" :class="'badge-'+requestStatusClass(slotProps.entry.content.response_status)">
                     {{slotProps.entry.content.response_status}}
                 </span>
+            </td>
+
+            <td class="table-fit">
+                <span v-if="slotProps.entry.content.duration">{{slotProps.entry.content.duration}}ms</span>
+                <span v-else>-</span>
             </td>
 
             <td class="table-fit" :data-timeago="slotProps.entry.created_at">{{timeAgo(slotProps.entry.created_at)}}</td>

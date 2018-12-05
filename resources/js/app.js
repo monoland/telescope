@@ -1,14 +1,20 @@
-import Vue from 'vue'
-import Base from './base'
-import Routes from './routes'
-import VueRouter from 'vue-router'
-import TreeView from 'vue-json-tree-view'
+import Vue from 'vue';
+import Base from './base';
+import axios from 'axios';
+import Routes from './routes';
+import VueRouter from 'vue-router';
+import VueJsonPretty from 'vue-json-pretty';
 import moment from 'moment-timezone';
 
 require('bootstrap');
 
+let token = document.head.querySelector('meta[name="csrf-token"]');
+
+if (token) {
+    axios.defaults.headers.common['X-CSRF-TOKEN'] = token.content;
+}
+
 Vue.use(VueRouter);
-Vue.use(TreeView);
 
 window.Popper = require('popper.js').default;
 
@@ -20,6 +26,7 @@ const router = new VueRouter({
     base: '/' + window.Telescope.path + '/',
 });
 
+Vue.component('vue-json-pretty', VueJsonPretty);
 Vue.component('related-entries', require('./components/RelatedEntries.vue'));
 Vue.component('index-screen', require('./components/IndexScreen.vue'));
 Vue.component('preview-screen', require('./components/PreviewScreen.vue'));
@@ -42,9 +49,12 @@ new Vue({
                 confirmationCancel: null,
             },
 
-            autoLoadsNewEntries: localStorage.autoLoadsNewEntries === '1'
+            autoLoadsNewEntries: localStorage.autoLoadsNewEntries === '1',
+
+            recording: Telescope.recording,
         }
     },
+
 
     methods: {
         autoLoadNewEntries(){
@@ -55,6 +65,14 @@ new Vue({
                 this.autoLoadsNewEntries = false;
                 localStorage.autoLoadsNewEntries = 0;
             }
+        },
+
+
+        toggleRecording(){
+            axios.post('/' + Telescope.path + '/telescope-api/toggle-recording');
+
+            window.Telescope.recording = !Telescope.recording;
+            this.recording = !this.recording;
         }
     }
 });

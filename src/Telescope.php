@@ -28,6 +28,20 @@ class Telescope
     public static $filterUsing = [];
 
     /**
+     * The callbacks that filter the batches that should be recorded.
+     *
+     * @var array
+     */
+    public static $filterBatchUsing = [];
+
+    /**
+     * The callback executed after queuing a new entry.
+     *
+     * @var \Closure
+     */
+    public static $afterRecordingHook;
+
+    /**
      * The callback that adds tags to the record.
      *
      * @var \Closure
@@ -47,6 +61,15 @@ class Telescope
      * @var array
      */
     public static $updatesQueue = [];
+
+    /**
+     * The list of hidden request headers.
+     *
+     * @var array
+     */
+    public static $hiddenRequestHeaders = [
+        'authorization',
+    ];
 
     /**
      * The list of hidden request parameters.
@@ -87,7 +110,7 @@ class Telescope
      */
     public static function start($app)
     {
-        if ($app->runningUnitTests()) {
+        if (! config('telescope.enabled')) {
             return;
         }
 
@@ -96,7 +119,8 @@ class Telescope
         static::registerMailableTagExtractor();
 
         if (static::runningApprovedArtisanCommand($app) ||
-            static::handlingNonTelescopeRequest($app)) {
+            static::handlingApprovedRequest($app)
+        ) {
             static::startRecording();
         }
     }
@@ -118,27 +142,32 @@ class Telescope
                 // 'migrate:refresh',
                 'migrate:reset',
                 'migrate:install',
+                'package:discover',
                 'queue:listen',
                 'queue:work',
                 'horizon',
                 'horizon:work',
                 'horizon:supervisor',
-            ], config('telescope.ignoreCommands', []))
+            ], config('telescope.ignoreCommands', []), config('telescope.ignore_commands', []))
         );
     }
 
     /**
-     * Determine if the application is handling a request not originating from Telescope.
+     * Determine if the application is handling an approved request.
      *
      * @param  \Illuminate\Foundation\Application  $app
      * @return bool
      */
-    protected static function handlingNonTelescopeRequest($app)
+    protected static function handlingApprovedRequest($app)
     {
         return ! $app->runningInConsole() && ! $app['request']->is(
-            config('telescope.path').'*',
-            'telescope-api*',
-            'vendor/telescope*'
+            array_merge([
+                config('telescope.path').'*',
+                'telescope-api*',
+                'vendor/telescope*',
+                'horizon*',
+                'vendor/horizon*',
+            ], config('telescope.ignore_paths', []))
         );
     }
 
@@ -149,7 +178,9 @@ class Telescope
      */
     public static function startRecording()
     {
-        static::$shouldRecord = true;
+        app(EntriesRepository::class)->loadMonitoredTags();
+
+        static::$shouldRecord = ! cache('telescope:pause-recording');
     }
 
     /**
@@ -180,6 +211,16 @@ class Telescope
     }
 
     /**
+     * Determine if Telescope is recording.
+     *
+     * @return bool
+     */
+    public static function isRecording()
+    {
+        return static::$shouldRecord;
+    }
+
+    /**
      * Record the given entry.
      *
      * @param  string  $type
@@ -188,7 +229,7 @@ class Telescope
      */
     protected static function record(string $type, IncomingEntry $entry)
     {
-        if (! static::$shouldRecord) {
+        if (! static::isRecording()) {
             return;
         }
 
@@ -196,13 +237,21 @@ class Telescope
             static::$tagUsing ? call_user_func(static::$tagUsing, $entry) : []
         );
 
-        if (Auth::hasUser()) {
-            $entry->user(Auth::user());
+        try {
+            if (Auth::hasUser()) {
+                $entry->user(Auth::user());
+            }
+        } catch (Throwable $e) {
+            // Do nothing.
         }
 
         static::withoutRecording(function () use ($entry) {
             if (collect(static::$filterUsing)->every->__invoke($entry)) {
                 static::$entriesQueue[] = $entry;
+            }
+
+            if (static::$afterRecordingHook) {
+                call_user_func(static::$afterRecordingHook, new static);
             }
         });
     }
@@ -358,7 +407,6 @@ class Telescope
      * @param  \Laravel\Telescope\IncomingEntry  $entry
      * @return void
      */
-
     public static function recordRequest(IncomingEntry $entry)
     {
         static::record(EntryType::REQUEST, $entry);
@@ -370,10 +418,21 @@ class Telescope
      * @param  \Laravel\Telescope\IncomingEntry  $entry
      * @return void
      */
-
     public static function recordScheduledCommand(IncomingEntry $entry)
     {
         static::record(EntryType::SCHEDULED_TASK, $entry);
+    }
+
+    /**
+     * Flush all entries in the queue.
+     *
+     * @return static
+     */
+    public static function flushEntries()
+    {
+        static::$entriesQueue = [];
+
+        return new static;
     }
 
     /**
@@ -391,7 +450,7 @@ class Telescope
 
         event(new MessageLogged('error', $e->getMessage(), [
             'exception' => $e,
-            'telescope' => $tags
+            'telescope' => $tags,
         ]));
     }
 
@@ -404,6 +463,32 @@ class Telescope
     public static function filter(Closure $callback)
     {
         static::$filterUsing[] = $callback;
+
+        return new static;
+    }
+
+    /**
+     * Set the callback that filters the batches that should be recorded.
+     *
+     * @param  \Closure  $callback
+     * @return static
+     */
+    public static function filterBatch(Closure $callback)
+    {
+        static::$filterBatchUsing[] = $callback;
+
+        return new static;
+    }
+
+    /**
+     * Set the callback that will be executed after an entry is recorded in the queue.
+     *
+     * @param  \Closure  $callback
+     * @return static
+     */
+    public static function afterRecording(Closure $callback)
+    {
+        static::$afterRecordingHook = $callback;
 
         return new static;
     }
@@ -433,6 +518,10 @@ class Telescope
             return;
         }
 
+        if (! collect(static::$filterBatchUsing)->every->__invoke(collect(static::$entriesQueue))) {
+            static::flushEntries();
+        }
+
         try {
             $batchId = Str::orderedUuid()->toString();
 
@@ -441,10 +530,6 @@ class Telescope
 
             if ($storage instanceof TerminableRepository) {
                 $storage->terminate();
-            }
-
-            if (config('telescope.limit')) {
-                static::pruneEntries($storage, config('telescope.limit'));
             }
         } catch (Exception $e) {
             app(ExceptionHandler::class)->report($e);
@@ -487,27 +572,18 @@ class Telescope
     }
 
     /**
-     * Prune the entries.
+     * Hide the given request header.
      *
-     * @param  \Laravel\Telescope\Contracts\EntriesRepository  $storage
-     * @param  int  $limit
-     * @return void
+     * @param  array  $headers
+     * @return static
      */
-    protected static function pruneEntries(EntriesRepository $storage, int $limit)
+    public static function hideRequestHeaders(array $headers)
     {
-        $storage->pruneEntries(EntryType::CACHE, $limit);
-        $storage->pruneEntries(EntryType::COMMAND, $limit);
-        $storage->pruneEntries(EntryType::EVENT, $limit);
-        $storage->pruneEntries(EntryType::EXCEPTION, $limit);
-        $storage->pruneEntries(EntryType::LOG, $limit);
-        $storage->pruneEntries(EntryType::MODEL, $limit);
-        $storage->pruneEntries(EntryType::MAIL, $limit);
-        $storage->pruneEntries(EntryType::NOTIFICATION, $limit);
-        $storage->pruneEntries(EntryType::QUERY, $limit);
-        $storage->pruneEntries(EntryType::REQUEST, $limit);
-        $storage->pruneEntries(EntryType::REDIS, $limit);
-        $storage->pruneEntries(EntryType::SCHEDULED_TASK, $limit);
+        static::$hiddenRequestHeaders = array_merge(
+            static::$hiddenRequestHeaders, $headers
+        );
 
+        return new static;
     }
 
     /**
@@ -558,7 +634,8 @@ class Telescope
     {
         return [
             'path' => config('telescope.path'),
-            'timezone' => config('app.timezone')
+            'timezone' => config('app.timezone'),
+            'recording' => ! cache('telescope:pause-recording'),
         ];
     }
 }

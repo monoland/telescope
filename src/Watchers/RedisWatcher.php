@@ -27,6 +27,10 @@ class RedisWatcher extends Watcher
      */
     public function recordCommand(CommandExecuted $event)
     {
+        if (! Telescope::isRecording()) {
+            return;
+        }
+
         Telescope::recordRedis(IncomingEntry::make([
             'connection' => $event->connectionName,
             'command' => $this->formatCommand($event->command, $event->parameters),
@@ -43,6 +47,16 @@ class RedisWatcher extends Watcher
      */
     private function formatCommand($command, $parameters)
     {
-        return $command.' '.implode(' ', $parameters);
+        $parameters = collect($parameters)->map(function ($parameter) {
+            if (is_array($parameter)) {
+                return collect($parameter)->map(function ($value, $key) {
+                    return is_int($key) ? $value : "{$key} {$value}";
+                })->implode(' ');
+            }
+
+            return $parameter;
+        })->implode(' ');
+
+        return "{$command} {$parameters}";
     }
 }

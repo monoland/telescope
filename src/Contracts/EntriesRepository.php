@@ -14,7 +14,7 @@ interface EntriesRepository
      * @param  mixed  $id
      * @return \Laravel\Telescope\EntryResult
      */
-    public function find($id) : EntryResult;
+    public function find($id): EntryResult;
 
     /**
      * Return all the entries of a given type.
@@ -42,13 +42,11 @@ interface EntriesRepository
     public function update(Collection $updates);
 
     /**
-     * Prune the entries of the given type.
+     * Load the monitored tags from storage.
      *
-     * @param  string  $type
-     * @param  int  $limit
      * @return void
      */
-    public function pruneEntries($type, $limit);
+    public function loadMonitoredTags();
 
     /**
      * Determine if any of the given tags are currently being monitored.

@@ -4,6 +4,7 @@ namespace Laravel\Telescope\Watchers;
 
 use Illuminate\Support\Str;
 use Laravel\Telescope\Telescope;
+use Laravel\Telescope\FormatModel;
 use Laravel\Telescope\IncomingEntry;
 
 class ModelWatcher extends Watcher
@@ -16,7 +17,7 @@ class ModelWatcher extends Watcher
      */
     public function register($app)
     {
-        $app['events']->listen('eloquent.*', [$this, 'recordAction']);
+        $app['events']->listen($this->options['events'] ?? 'eloquent.*', [$this, 'recordAction']);
     }
 
     /**
@@ -28,11 +29,11 @@ class ModelWatcher extends Watcher
      */
     public function recordAction($event, $data)
     {
-        if ($this->shouldIgnore($event)) {
+        if (! Telescope::isRecording() || ! $this->shouldRecord($event)) {
             return;
         }
 
-        $model = get_class($data[0]).':'.$data[0]->getKey();
+        $model = FormatModel::given($data[0]);
 
         $changes = $data[0]->getChanges();
 
@@ -57,16 +58,15 @@ class ModelWatcher extends Watcher
     }
 
     /**
-     * Determine if the Eloquent event should be ignored.
+     * Determine if the Eloquent event should be recorded.
      *
      * @param  string  $eventName
      * @return bool
      */
-    private function shouldIgnore($eventName)
+    private function shouldRecord($eventName)
     {
         return Str::is([
-            '*booting*', '*booted*', '*creating*', '*retrieved*', '*updating*',
-            '*saving*', '*saved*', '*restoring*', '*deleting*'
+            '*created*', '*updated*', '*restored*', '*deleted*',
         ], $eventName);
     }
 }
